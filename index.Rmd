@@ -1,0 +1,440 @@
+---
+title: "Hypothesis Testing In R Using the ToothGrowth Data"
+author: "Bertrand Rigaldies, January 2016"
+geometry: margin=.5in
+output: html_document
+fontsize: 9pt
+---
+
+```{r global_options, echo=FALSE, warning=FALSE, message=FALSE, error=TRUE}
+# Load the requires librabries, and set global options silently.
+require(knitr)
+require(dplyr)
+require(ggplot2)
+require(xtable)
+#opts_chunk$set(warning=FALSE, message=FALSE, error=TRUE, dev = 'pdf')
+opts_chunk$set(warning=FALSE, message=FALSE, error=TRUE)
+```
+
+```{r echo=FALSE, results="hide"}
+data_set_name <- 'ToothGrowth'
+fig_num <- 0
+```
+
+## Abstract
+
+This paper uses the R `r data_set_name` data in the R `datasets` package to exercise hypothesis testing in R. Using the `r data_set_name` sample data, the following two $H_{0}$ null hypotheses are tested:
+
+1. The tooth length growth does not increase as the supplement dose increases, regardless of the supplement type.
+1. There is no difference of tooth length growth between the two supplement types 'OJ' and 'VC'.
+
+## Data Exploration
+
+### Data Structure
+
+```{r r data_loading, echo=FALSE, results="hidden"}
+library(datasets); data(ToothGrowth); 
+dframe <- ToothGrowth ; dframe$dose <- as.factor(dframe$dose)
+```
+
+The `r data_set_name` data used in the analysis is a subset from the original study [The Effect of Vitamin C on Tooth Growth in Guinea Pigs](https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/ToothGrowth.html). As shown below, the `r data_set_name` data set is a data frame composed of `r dim(ToothGrowth)[1]` observations with `r dim(ToothGrowth)[2]` variables: `r names(dframe)`. In this paper, the `r data_set_name` data set is interpreted as follows: Each one of the `r dim(ToothGrowth)[1]` observations is treated as a separate guinea pig subject, i.e., there is **no pairing** of observed samples. Each subject was provided with a constant supplement type and dose amount for the subject's lifetime.  At the end of each subject's life, the subject was euthanized, a subject's tooth was extracted and sliced, the length of the [odontoblast cells](https://en.wikipedia.org/wiki/Odontoblast) in the subject's tooth was measured in micron, and stored in the `len` variable of the observation.
+
+```{r r data_exploration_1, echo=FALSE}
+library(datasets); data(ToothGrowth); 
+dframe <- ToothGrowth ; dframe$dose <- as.factor(dframe$dose)
+str(dframe)
+```
+
+
+```{r echo=FALSE,results="hide"}
+table_num <- 1
+```
+
+The different supplement types and dose amounts, as well as the number of subjects, tooth growth mean and standard deviation per combination of variables are summarized in Table `r table_num` below.
+
+```{r data_exploration_2, echo=FALSE, results="asis"}
+table_summary <- table_num
+print(xtable(as.data.frame(summarize(group_by(dframe, supp, dose), count=n(), mean=round(mean(len),2), sd=round(sd(len),2))), auto=TRUE, caption='ToothGrowth Data Summary'), type="latex", comment=F)
+```
+
+### Data Visualization
+
+```{r echo=FALSE, results="hide"}
+fig_num <- fig_num + 1
+fig_boxplot <- fig_num
+```
+
+Figure `r fig_boxplot` (See Appendix A for the R code) below plots the data into two sub-splots, one for each supplement type, as a series of boxplots to show the relationship between dose amounts and odontoblast cells length, which we will refer simply as the "tooth length", or "tooth growth", as suggested in the R documentation for `r data_set_name` (type ?ToothGrowth at the R command prompt).
+
+``` {r fig_boxplot, echo=FALSE, fig.width=9, fig.height = 4, fig.align='center'}
+supp_names <- list('OJ'="Orange Juice", 'VC'="Ascorbic Acid")
+supp_labeller <- function(variable,value) { return(supp_names[value]) }
+print(ggplot(dframe, aes(x = dose, y = len)) + 
+          geom_boxplot() + 
+          facet_grid(~ supp, labeller = supp_labeller) +
+          labs(x = 'Dose Amount (mg)', 
+               y = 'Tooth Length (Micron)',
+               title = paste('Fig.', fig_num, ': Tooth Length vs. Dose Amount')))
+```
+
+See Appendix B for additional plots of the `r data_set_name` data.
+
+### Observations From The Data
+
+Figure `r fig_boxplot` shows that the average tooth length increases when the dosage increases, which if true, would reject our first $H_{0}$ hypothesis. Figure `r fig_boxplot` also indicates that the average tooth growth is larger with supplement 'OJ' than with supplement 'VC' for doses 0.5 and 1 (Not so for dosage 2), which if true, would reject our second $H_{0}$ hypothesis. Let's compute the relevant statistics to test our $H_{0}$ hypotheses.
+
+### Assumptions
+
+Our statistics computation assumes the following:
+
+1. The grouping of the `r data_set_name` data by dose and supplement type creates **non-paired idependent groups**.
+2. Due to the very small sample size (10 for each group; see Table `r table_summary`), a T distribution is assumed.
+
+## $H_{0}$ hypothesis #1: The Tooth Length Does Not Change With Dose Increase
+
+### Alternative Hypothesis
+
+The alternative hypothesis $H_{a}$ that we will attempt to accept or reject is the following: The average tooth length does increase when the supplement dose increases, regardless of the supplement type.
+
+### Methodology
+
+```{r echo=FALSE,results="hide"}
+table_num <- table_num + 1
+```
+
+The R `t.test` is performed six times to compare the average tooth length between two dose amounts, hence creating the test combinations as shown in Table `r table_num` below:
+
+```{r table_tests_1, echo=FALSE, results="asis"}
+tests1 <- as.data.frame(rbind(cbind('Test 1', 'Test 2', 'Test 3'), cbind('Test 4', 'Test 5', 'Test 6')))
+names(tests1) <- c('0.5_vs_1', '1_vs_2', '0.5_vs_2')
+row.names(tests1) <- c('OJ', 'VC')
+print(xtable(tests1, auto=TRUE, caption='Multiple Tests For the First Hypothesis 0'), type="latex", comment=F)
+```
+
+For each test in Table `r table_num`, the following data processing and statistics computation take place:
+
+1. Two data groups corresponding to the two doses to compare are obtained from the `r data_set_name` data by filtering on the `supp` and `dose` variables;
+2. the R `t.test` function is called on the **difference between the two groups** with the following parameters:
+    + 5% significance level (i.e., 95% confidence interval);
+    + Not paired;
+    + Not equal variances (See Table `r table_summary`);
+    + One-sided test (alternative="greater"), so that we are in a position to demonstrate that the tooth length does increase when the dose increases.
+    + Finally, in order to adjust for errors in a multiple tests environment, the p-values are adjusted using the False Discovery Rate method of Benjamini, Hochberg, and Yekutieli (method="BH").
+
+### Results
+
+```{r echo=FALSE, results="hide"}
+table_num <- table_num + 1
+```
+
+Table `r table_num` provides the t.test results for all tests identified in Table `r table_num-1` (See Appendix C for the R code):
+
+```{r tests_1, echo=FALSE, results="asis"}
+g_oj_1 <- filter(dframe, supp=='OJ' & dose==0.5)
+g_oj_2 <- filter(dframe, supp=='OJ' & dose==1)
+g_oj_3 <- filter(dframe, supp=='OJ' & dose==2)
+g_vc_1 <- filter(dframe, supp=='VC' & dose==0.5)
+g_vc_2 <- filter(dframe, supp=='VC' & dose==1)
+g_vc_3 <- filter(dframe, supp=='VC' & dose==2)
+n = length(g_oj_1$len) # All groups have the same number of data samples
+df = n - 1
+qt95 = qt(.95, df)
+
+t.test_1 <- t.test(g_oj_2$len - g_oj_1$len, alternative = "greater")
+t.test_2 <- t.test(g_oj_3$len - g_oj_2$len, alternative = "greater")
+t.test_3 <- t.test(g_oj_3$len - g_oj_1$len, alternative = "greater")
+t.test_4 <- t.test(g_vc_2$len - g_vc_1$len, alternative = "greater")
+t.test_5 <- t.test(g_vc_3$len - g_vc_2$len, alternative = "greater")
+t.test_6 <- t.test(g_vc_3$len - g_vc_1$len, alternative = "greater")
+
+pValues <- c(t.test_1$p.value, t.test_2$p.value, t.test_3$p.value, t.test_4$p.value, t.test_5$p.value, t.test_6$p.value)
+pValuesAdjusted <- p.adjust(c(t.test_1$p.value, t.test_2$p.value, t.test_3$p.value, t.test_4$p.value, t.test_5$p.value, t.test_6$p.value), method="BH")
+
+results <- as.data.frame(rbind(
+    c(round(qt95, 4),     
+      round(t.test_1$statistic["t"], 4),       
+      round(t.test_1$conf.int[1], 4),      
+      round(t.test_1$p.value, 6),
+      round(pValuesAdjusted[1], 6),
+      ifelse(pValuesAdjusted[1] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_2$statistic["t"], 4),       
+      round(t.test_2$conf.int[1], 4),      
+      round(t.test_2$p.value, 6),
+      round(pValuesAdjusted[2], 6),
+      ifelse(pValuesAdjusted[2] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_3$statistic["t"], 4),       
+      round(t.test_3$conf.int[1], 4),      
+      round(t.test_3$p.value, 6),
+      round(pValuesAdjusted[3], 6),
+      ifelse(pValuesAdjusted[3] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_4$statistic["t"], 4),       
+      round(t.test_4$conf.int[1], 4),    
+      round(t.test_4$p.value, 6),
+      round(pValuesAdjusted[4], 6),
+      ifelse(pValuesAdjusted[4] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_5$statistic["t"], 4),       
+      round(t.test_5$conf.int[1], 4),      
+      round(t.test_5$p.value, 6),
+      round(pValuesAdjusted[5], 6),
+      ifelse(pValuesAdjusted[5] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_6$statistic["t"], 4),       
+      round(t.test_6$conf.int[1], 4),      
+      round(t.test_6$p.value, 6),
+      round(pValuesAdjusted[6], 6),
+      ifelse(pValuesAdjusted[6] < .05, 'Yes', 'No'))))
+names(results) <- c('qt_95', 't-Score', 'Conf-Int', 'p-Value', 'Adjusted p-Value', "Reject-H0 (Adj. p < .05)?")
+row.names(results) <- c(
+    'Test 1 (OJ, Doses 1 vs. .5)', 'Test 2 (OJ, Doses 2 vs. 1)', 'Test 3  (OJ, Doses 2 vs. .5)',
+    'Test 4 (VC, Doses 1 vs. .5)', 'Test 5 (VC, Doses 2 vs. 1)', 'Test 6  (VC, Doses 2 vs. .5)')
+print(xtable(results, caption='First Hypothesis 0 Test Results', auto=TRUE), type="latex", comment=F)
+```
+
+### Conclusion
+
+In all tests, **our hypothesis was rejected** based on each test's **adjusted p-value being lower than 0.05**. With a 95% confidence, and based on the ToothGrowth data sample, we are asserting that the average tooth length does statistically increase when the supplement dose increases, regardless of the supplement type used.
+
+## $H_{0}$ hypothesis #2: There Is No Tooth Growth Difference Between The Two Supplement Types 'OJ' and 'VC'
+
+### Alternative Hypothesis
+
+The alternative hypothesis $H_{a}$ that we will attempt to accept or reject is the following: The average tooth growth is larger with supplement type 'OJ' than with supplement type 'VC'.
+
+### Methodology
+
+The methodology is identical to that used with the first hypothesis: For each dose amount, two data groups are created, one for each supplement type, and their difference is analyzed with the R `t.test` function.
+
+```{r echo=FALSE,results="hide"}
+table_num <- table_num + 1
+```
+
+The test combinations are shown in Table `r table_num` below:
+
+```{r table_tests_2, echo=FALSE, results="asis"}
+tests2 <- as.data.frame(rbind('Test 7', 'Test 8', 'Test 9'))
+names(tests2) <- c('OJ_vs_VC')
+row.names(tests2) <- c('Dose = .5', 'Dose = 1', 'Dose = 2')
+print(xtable(tests2, auto=TRUE, caption='Multiple Tests For the Second Hypothesis 0'), type="latex", comment=F)
+```
+
+### Results
+
+```{r echo=FALSE, results="hide"}
+table_num <- table_num + 1
+```
+
+Table `r table_num` provides the t.test results for all tests identified in Table `r table_num-1` (See Appendix D for the R code):
+
+```{r tests_2, echo=FALSE, results="asis"}
+g_d0.5_oj <- filter(dframe, supp=='OJ' & dose==0.5)
+g_d0.5_vc <- filter(dframe, supp=='VC' & dose==0.5)
+g_d1_oj <- filter(dframe, supp=='OJ' & dose==1)
+g_d1_vc <- filter(dframe, supp=='VC' & dose==1)
+g_d2_oj <- filter(dframe, supp=='OJ' & dose==2)
+g_d2_vc <- filter(dframe, supp=='VC' & dose==2)
+
+n = length(g_d0.5_oj$len) # All groups have the same number of data samples
+df = n - 1
+qt95 = qt(.95, df)
+
+t.test_7 <- t.test(g_d0.5_oj$len - g_d0.5_vc$len, alternative = "greater")
+t.test_8 <- t.test(g_d1_oj$len - g_d1_vc$len, alternative = "greater")
+t.test_9 <- t.test(g_d2_oj$len - g_d2_vc$len, alternative = "greater")
+
+pValues2 <- c(t.test_7$p.value, t.test_8$p.value, t.test_9$p.value)
+pValuesAdjusted2 <- p.adjust(pValues2, method="BH")
+
+results2 <- as.data.frame(rbind(
+    c(round(qt95, 4),     
+      round(t.test_7$statistic["t"], 4),       
+      round(t.test_7$conf.int[1], 4),      
+      round(t.test_7$p.value, 6),
+      round(pValuesAdjusted2[1], 6),
+      ifelse(pValuesAdjusted2[1] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_8$statistic["t"], 4),       
+      round(t.test_8$conf.int[1], 4),      
+      round(t.test_8$p.value, 6),
+      round(pValuesAdjusted2[2], 6),
+      ifelse(pValuesAdjusted2[2] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_9$statistic["t"], 4),       
+      round(t.test_9$conf.int[1], 4),      
+      round(t.test_9$p.value, 6),
+      round(pValuesAdjusted2[3], 6),
+      ifelse(pValuesAdjusted2[3] < .05, 'Yes', 'No'))))
+names(results2) <- c('qt_95', 't-Score', 'Conf-Int', 'p-Value', 'Adjusted p-Value', "Reject-H0 (Adj. p < .05)?")
+row.names(results2) <- c(
+    'Test 7 (Dose = 0.5, OJ vs. VC)', 'Test 8 (Dose = 1, OJ vs. VC)', 'Test 9 (Dose = 2, OJ vs. VC)')
+print(xtable(results2, caption='Second Hypothesis 0 Test Results', auto=TRUE), type="latex", comment=F)
+```
+
+### Conclusion
+
+For the 0.5 and 1 mg doses (Tests 7 and 8 respectively), **Our hypothesis was rejected** based on each test's **adjusted p-value being lower than 0.05**. However, for the 2 mg dose (Test 9), we failed to reject the hypothesis due to a p-value of round(t.test_9$p.value, 6). In conclusion, with a 95% confidence interval, and based on the ToothGrowth data sample, we are asserting that for doses 0.5 and 1 mg the tooth length growth is statistically greater with supplement type 'OJ' than with supplement type 'VC'. However, for the 2mg dose, there is no statistical difference of tooth length growth between the two supplement types.
+
+# Appendices
+
+## Appendix A: Figure `r fig_boxplot` R Code
+
+``` {r fig_boxplot_code, results="hide"}
+supp_names <- list('OJ'="Orange Juice", 'VC'="Ascorbic Acid")
+supp_labeller <- function(variable,value) { return(supp_names[value]) }
+plot1 <- ggplot(dframe, aes(x = dose, y = len)) + 
+          geom_boxplot() + facet_grid(~ supp, labeller = supp_labeller) +
+          labs(x = 'Dose Amount (mg)', 
+               y = 'Tooth Length (Micron)',
+               title = paste('Fig.', fig_num, ': Tooth Length vs. Dose Amount'))
+```
+
+## Appendix B: Additional ToothGrowth Data Visualizations
+
+```{r echo=FALSE, results="hide"}
+fig_num <- fig_num + 1
+fig_hist_by_dose <- fig_num
+```
+
+Similarly to Figure `r fig_boxplot` and using a bar chart this time, Figure `r fig_hist_by_dose` below plots the **mean tooth length vs. the dose amount** for two separate groups of subjects, each group corresponding to a specific supplement type.
+
+```{r fig_hist_by_dose, fig.width=9, fig.height = 4}
+print(ggplot(dframe,aes(x=dose,y=len,fill=dose)) + 
+    stat_summary(fun.y=mean,position=position_dodge(),geom="bar") + 
+    facet_wrap(~supp) + scale_fill_brewer(palette="Set1") +
+    labs(x = 'Dose Amount (mg)', 
+         y = 'Tooth Length (Micron)',
+         title = paste('Fig.', fig_num, ': Tooth Length vs. Dose Amount By Supplement Type')))    
+```
+
+```{r echo=FALSE, results="hide"}
+fig_num <- fig_num + 1
+fig_hist_by_supp <- fig_num
+```
+
+And swithing the variables *supplement* and *dose*, Figure `r fig_hist_by_supp` below plots the **mean tooth length vs. the supplement type** amount for three separate groups of subjects, each group corresponding to a specific dose amount.
+
+```{r fig_hist_by_supp, fig.width=9, fig.height = 4}
+print(ggplot(dframe,aes(x=supp,y=len,fill=supp)) + 
+    stat_summary(fun.y=mean,position=position_dodge(),geom="bar") + 
+    facet_wrap(~dose) + scale_fill_brewer(palette="Set1") +
+    labs(x = 'Supplement Type', 
+         y = 'Tooth Length (Micron)',
+         title = paste('Fig.', fig_num, ': Tooth Length vs. Supplement Type By Dose')))
+```
+
+## Appendix C: T Tests for the Hypothesis H0 - Tooth Length Does Not Increase With Dose Increase
+
+```{r tests_1_code, results="hiden"}
+g_oj_1 <- filter(dframe, supp=='OJ' & dose==0.5)
+g_oj_2 <- filter(dframe, supp=='OJ' & dose==1)
+g_oj_3 <- filter(dframe, supp=='OJ' & dose==2)
+g_vc_1 <- filter(dframe, supp=='VC' & dose==0.5)
+g_vc_2 <- filter(dframe, supp=='VC' & dose==1)
+g_vc_3 <- filter(dframe, supp=='VC' & dose==2)
+n = length(g_oj_1$len) # All groups have the same number of data samples
+df = n - 1
+qt95 = qt(.95, df)
+
+t.test_1 <- t.test(g_oj_2$len - g_oj_1$len, alternative = "greater")
+t.test_2 <- t.test(g_oj_3$len - g_oj_2$len, alternative = "greater")
+t.test_3 <- t.test(g_oj_3$len - g_oj_1$len, alternative = "greater")
+t.test_4 <- t.test(g_vc_2$len - g_vc_1$len, alternative = "greater")
+t.test_5 <- t.test(g_vc_3$len - g_vc_2$len, alternative = "greater")
+t.test_6 <- t.test(g_vc_3$len - g_vc_1$len, alternative = "greater")
+
+pValues <- c(t.test_1$p.value, t.test_2$p.value, t.test_3$p.value, 
+             t.test_4$p.value, t.test_5$p.value, t.test_6$p.value)
+pValuesAdjusted <- p.adjust(c(t.test_1$p.value, t.test_2$p.value, t.test_3$p.value, 
+                              t.test_4$p.value, t.test_5$p.value, t.test_6$p.value), 
+                            method="BH")
+
+results <- as.data.frame(rbind(
+    c(round(qt95, 4),     
+      round(t.test_1$statistic["t"], 4),       
+      round(t.test_1$conf.int[1], 4),      
+      round(t.test_1$p.value, 6),
+      round(pValuesAdjusted[1], 6),
+      ifelse(pValuesAdjusted[1] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_2$statistic["t"], 4),       
+      round(t.test_2$conf.int[1], 4),      
+      round(t.test_2$p.value, 6),
+      round(pValuesAdjusted[2], 6),
+      ifelse(pValuesAdjusted[2] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_3$statistic["t"], 4),       
+      round(t.test_3$conf.int[1], 4),      
+      round(t.test_3$p.value, 6),
+      round(pValuesAdjusted[3], 6),
+      ifelse(pValuesAdjusted[3] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_4$statistic["t"], 4),       
+      round(t.test_4$conf.int[1], 4),    
+      round(t.test_4$p.value, 6),
+      round(pValuesAdjusted[4], 6),
+      ifelse(pValuesAdjusted[4] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_5$statistic["t"], 4),       
+      round(t.test_5$conf.int[1], 4),      
+      round(t.test_5$p.value, 6),
+      round(pValuesAdjusted[5], 6),
+      ifelse(pValuesAdjusted[5] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_6$statistic["t"], 4),       
+      round(t.test_6$conf.int[1], 4),      
+      round(t.test_6$p.value, 6),
+      round(pValuesAdjusted[6], 6),
+      ifelse(pValuesAdjusted[6] < .05, 'Yes', 'No'))))
+names(results) <- c('qt_95', 't-Score', 'Conf-Int', 'p-Value', 'Adjusted p-Value', "Reject-H0 (Adj. p < .05)?")
+row.names(results) <- c('Test 1 (OJ, Doses 1 vs. .5)', 'Test 2 (OJ, Doses 2 vs. 1)', 'Test 3  (OJ, Doses 2 vs. .5)',
+                        'Test 4 (VC, Doses 1 vs. .5)', 'Test 5 (VC, Doses 2 vs. 1)', 'Test 6  (VC, Doses 2 vs. .5)')
+# print(xtable(results, caption='First Hypothesis 0 Test Results', auto=TRUE), type="latex", comment=F)
+```
+
+## Appendix D: T Tests for the Hypothesis H0 - There is No Difference In Tooth Length Growth Between Supplement Types
+
+```{r tests_2_code, results="hidden"}
+g_d0.5_oj <- filter(dframe, supp=='OJ' & dose==0.5)
+g_d0.5_vc <- filter(dframe, supp=='VC' & dose==0.5)
+g_d1_oj <- filter(dframe, supp=='OJ' & dose==1)
+g_d1_vc <- filter(dframe, supp=='VC' & dose==1)
+g_d2_oj <- filter(dframe, supp=='OJ' & dose==2)
+g_d2_vc <- filter(dframe, supp=='VC' & dose==2)
+
+n = length(g_d0.5_oj$len) # All groups have the same number of data samples
+df = n - 1
+qt95 = qt(.95, df)
+
+t.test_7 <- t.test(g_d0.5_oj$len - g_d0.5_vc$len, alternative = "greater")
+t.test_8 <- t.test(g_d1_oj$len - g_d1_vc$len, alternative = "greater")
+t.test_9 <- t.test(g_d2_oj$len - g_d2_vc$len, alternative = "greater")
+
+pValues2 <- c(t.test_7$p.value, t.test_8$p.value, t.test_9$p.value)
+pValuesAdjusted2 <- p.adjust(pValues2, method="BH")
+
+results2 <- as.data.frame(rbind(
+    c(round(qt95, 4),     
+      round(t.test_7$statistic["t"], 4),       
+      round(t.test_7$conf.int[1], 4),      
+      round(t.test_7$p.value, 6),
+      round(pValuesAdjusted2[1], 6),
+      ifelse(pValuesAdjusted2[1] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_8$statistic["t"], 4),       
+      round(t.test_8$conf.int[1], 4),      
+      round(t.test_8$p.value, 6),
+      round(pValuesAdjusted2[2], 6),
+      ifelse(pValuesAdjusted2[2] < .05, 'Yes', 'No')),
+    c(round(qt95, 4),     
+      round(t.test_9$statistic["t"], 4),       
+      round(t.test_9$conf.int[1], 4),      
+      round(t.test_9$p.value, 6),
+      round(pValuesAdjusted2[3], 6),
+      ifelse(pValuesAdjusted2[3] < .05, 'Yes', 'No'))))
+names(results2) <- c('qt_95', 't-Score', 'Conf-Int', 'p-Value', 'Adjusted p-Value', "Reject-H0 (Adj. p < .05)?")
+row.names(results2) <- c('Test 7 (Dose = 0.5, OJ vs. VC)', 'Test 8 (Dose = 1, OJ vs. VC)', 'Test 9 (Dose = 2, OJ vs. VC)')
+# print(xtable(results2, caption='Second Hypothesis 0 Test Results', auto=TRUE), type="latex", comment=F)
+```
